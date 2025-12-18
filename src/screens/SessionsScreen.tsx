@@ -16,13 +16,11 @@ import type { Session } from '../hooks/useOpenCode';
 interface SessionsScreenProps {
   getSessions: () => Promise<Session[]>;
   onSelectSession: (session: Session) => void;
-  onDisconnect: () => void;
 }
 
 export function SessionsScreen({
   getSessions,
   onSelectSession,
-  onDisconnect,
 }: SessionsScreenProps) {
   const { theme, colors: c } = useTheme();
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -99,13 +97,6 @@ export function SessionsScreen({
             {sessions.length} {sessions.length === 1 ? 'session' : 'sessions'}
           </Text>
         </View>
-        <TouchableOpacity 
-          style={styles.disconnectButton}
-          onPress={onDisconnect}
-          activeOpacity={0.7}
-        >
-          <Icon name="logout" size={20} color={c.error} />
-        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -144,9 +135,6 @@ export function SessionsScreen({
 }
 
 const styles = StyleSheet.create({
-  disconnectButton: {
-    padding: spacing.sm,
-  },
   list: {
     paddingBottom: 100,
   },

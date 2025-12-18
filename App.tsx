@@ -12,12 +12,12 @@ import { useOpenCode, Session } from './src/hooks/useOpenCode';
 import { useTheme } from './src/hooks/useTheme';
 import { ConnectScreen } from './src/screens/ConnectScreen';
 import { SessionsScreen } from './src/screens/SessionsScreen';
-import { ProjectsScreen } from './src/screens/ProjectsScreen';
+import { SettingsScreen } from './src/screens/SettingsScreen';
 import { ChatScreen } from './src/screens/ChatScreen';
 import { Icon } from './src/components/Icon';
 import { spacing, radius } from './src/theme';
 
-type Tab = 'sessions' | 'projects';
+type Tab = 'sessions' | 'settings';
 
 export default function App() {
   const colorScheme = useColorScheme();
@@ -105,11 +105,11 @@ export default function App() {
           <SessionsScreen
             getSessions={getSessions}
             onSelectSession={handleSelectSession}
-            onDisconnect={handleDisconnect}
           />
         ) : (
-          <ProjectsScreen
-            getProjects={getProjects}
+          <SettingsScreen
+            serverUrl={serverUrl}
+            onDisconnect={handleDisconnect}
           />
         )}
 
@@ -140,19 +140,19 @@ export default function App() {
             
             <TouchableOpacity
               style={styles.tab}
-              onPress={() => setActiveTab('projects')}
+              onPress={() => setActiveTab('settings')}
               activeOpacity={0.7}
             >
               <Icon 
-                name="folder-open" 
+                name="settings" 
                 size={22} 
-                color={activeTab === 'projects' ? c.accent : c.textMuted} 
+                color={activeTab === 'settings' ? c.accent : c.textMuted} 
               />
               <Text style={[
                 styles.tabLabel,
-                { color: activeTab === 'projects' ? c.accent : c.textMuted }
+                { color: activeTab === 'settings' ? c.accent : c.textMuted }
               ]}>
-                Projects
+                Settings
               </Text>
             </TouchableOpacity>
           </BlurView>
