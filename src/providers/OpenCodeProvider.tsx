@@ -22,6 +22,14 @@ export interface Project {
   path?: string;
 }
 
+export interface Command {
+  name: string;
+  description?: string;
+  agent?: string;
+  model?: string;
+  category?: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -107,7 +115,15 @@ interface OpenCodeContextValue {
   projects: Project[];
   projectsLoading: boolean;
   refreshProjects: () => void;
-  
+
+  // Commands
+  commands: Command[];
+  commandsLoading: boolean;
+  refreshCommands: () => void;
+
+  // Send command to session
+  sendCommand: (sessionId: string, command: Command, args?: string) => Promise<boolean>;
+
   // Client access
   client: OpenCodeClient | null;
 }
@@ -148,6 +164,10 @@ export function OpenCodeProvider({ children, defaultServerUrl = 'http://192.168.
   // UI state for projects
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectsLoading, setProjectsLoading] = useState(false);
+
+  // UI state for commands
+  const [commands, setCommands] = useState<Command[]>([]);
+  const [commandsLoading, setCommandsLoading] = useState(false);
   
   // SSE subscription state
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -576,7 +596,72 @@ export function OpenCodeProvider({ children, defaultServerUrl = 'http://192.168.
       fetchProjects();
     }
   }, [connected, fetchProjects]);
-  
+
+  // Fetch commands
+  const fetchCommands = useCallback(async () => {
+    if (!clientRef.current) return;
+
+    setCommandsLoading(true);
+    try {
+      const result = await clientRef.current.command.list();
+      const commandsData = (result.data ?? []) as Command[];
+      setCommands(commandsData);
+    } catch (err) {
+      console.error('[OpenCode] Error fetching commands:', err);
+      setError((err as Error).message);
+    } finally {
+      setCommandsLoading(false);
+    }
+  }, []);
+
+  // Refresh commands
+  const refreshCommands = useCallback(() => {
+    fetchCommands();
+  }, [fetchCommands]);
+
+  // Auto-fetch commands when connected
+  useEffect(() => {
+    if (connected) {
+      fetchCommands();
+    }
+  }, [connected, fetchCommands]);
+
+  // Send a command to a session
+  const sendCommand = useCallback(async (sessionId: string, command: Command, args?: string): Promise<boolean> => {
+    if (!clientRef.current) {
+      console.log('[OpenCode] sendCommand: No client');
+      return false;
+    }
+
+    setIsSending(true);
+    try {
+      console.log('[OpenCode] Sending command to session:', sessionId, 'command:', command.name);
+
+      await clientRef.current.session.command({
+        path: { id: sessionId },
+        body: {
+          command: command.name,
+          arguments: args,
+          agent: command.agent,
+          model: command.model,
+        },
+      });
+
+      console.log('[OpenCode] Command sent successfully');
+
+      // Refresh messages after sending
+      fetchSessionMessages(sessionId, true);
+      return true;
+    } catch (err) {
+      const error = err as Error;
+      console.error('[OpenCode] Error sending command:', error.message, error);
+      setError(error.message);
+      return false;
+    } finally {
+      setIsSending(false);
+    }
+  }, [fetchSessionMessages]);
+
   const value: OpenCodeContextValue = {
     connected,
     connecting,
@@ -601,6 +686,10 @@ export function OpenCodeProvider({ children, defaultServerUrl = 'http://192.168.
     projects,
     projectsLoading,
     refreshProjects,
+    commands,
+    commandsLoading,
+    refreshCommands,
+    sendCommand,
     client: clientRef.current,
   };
   

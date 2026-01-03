@@ -1,7 +1,7 @@
 import { useEffect, useCallback } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { ChatScreen } from '../../src/screens/ChatScreen';
-import { useOpenCode, Session } from '../../src/providers/OpenCodeProvider';
+import { useOpenCode, Session, Command } from '../../src/providers/OpenCodeProvider';
 
 export default function Chat() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -15,6 +15,9 @@ export default function Chat() {
     isSending,
     subscribeToSession,
     unsubscribeFromSession,
+    commands,
+    commandsLoading,
+    sendCommand,
   } = useOpenCode();
 
   // Subscribe to session on mount
@@ -45,6 +48,11 @@ export default function Chat() {
     return sendPrompt(id, text);
   }, [sendPrompt, id]);
 
+  const handleSendCommand = useCallback(async (command: Command, args?: string) => {
+    if (!id) return false;
+    return sendCommand(id, command, args);
+  }, [sendCommand, id]);
+
   return (
     <ChatScreen
       session={session}
@@ -53,6 +61,9 @@ export default function Chat() {
       serverUrl={serverUrl}
       onBack={handleBack}
       onSendMessage={handleSendMessage}
+      onSendCommand={handleSendCommand}
+      commands={commands}
+      commandsLoading={commandsLoading}
       isSending={isSending}
     />
   );
