@@ -1,6 +1,6 @@
-# OpenPad
+# OpenDroid
 
-A mobile client for [OpenCode](https://opencode.ai) - the AI coding assistant. Built with Expo and React Native.
+A mobile client for [OpenCode](https://opencode.ai) - the AI coding assistant. Built with Expo and React Native. Works on Android, iOS (including iPad), and web.
 
 ## Features
 
@@ -12,6 +12,7 @@ A mobile client for [OpenCode](https://opencode.ai) - the AI coding assistant. B
 - Image attachment support
 - Dark/light theme support
 - Live polling for real-time updates
+- Optimized for Android devices
 
 ## Screenshots
 
@@ -21,15 +22,15 @@ A mobile client for [OpenCode](https://opencode.ai) - the AI coding assistant. B
 
 - Node.js 18+
 - npm or yarn
-- iOS Simulator (Mac) or Android Emulator, or physical device with Expo Go
+- Android device/emulator or iOS Simulator (Mac) or physical device with Expo Go
 
 ## Installation
 
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/R44VC0RP/openpad.git
-cd openpad
+git clone https://github.com/R44VC0RP/opendroid.git
+cd opendroid
 ```
 
 2. Install dependencies:
@@ -58,11 +59,17 @@ npm start
 ## Project Structure
 
 ```
-openpad/
-├── App.tsx                 # Main app entry point with navigation
+opendroid/
+├── app/                    # Expo Router structure
+│   ├── (tabs)/            # Tab navigation
+│   │   ├── sessions/      # Sessions screens
+│   │   └── settings.tsx   # Settings screen
+│   ├── chat/[id].tsx      # Chat screen (dynamic route)
+│   ├── connect.tsx        # Connection screen
+│   └── _layout.tsx        # Root layout
 ├── src/
 │   ├── components/         # Reusable UI components
-│   │   ├── GlassCard.tsx   # Glass morphism card component
+│   │   ├── GlassCard.tsx   # Glass morphism card component (with Android fallback)
 │   │   ├── Icon.tsx        # Icon wrapper for lucide-react-native
 │   │   └── Markdown.tsx    # Markdown renderer for messages
 │   ├── hooks/              # Custom React hooks
@@ -84,10 +91,11 @@ openpad/
 ## Tech Stack
 
 - **Expo SDK 54** - React Native development platform
-- **React Navigation** - Native stack navigation
+- **Expo Router** - File-based navigation
 - **@opencode-ai/sdk** - OpenCode API client
 - **lucide-react-native** - Icon library
-- **expo-blur** - Blur effects for iOS
+- **expo-blur** - Blur effects (iOS) with Android fallback
+- **expo-glass-effect** - Liquid glass effects for iOS 26+ with Android fallback
 - **react-native-markdown-display** - Markdown rendering
 
 ## Contributing
@@ -135,13 +143,55 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/):
 
 ### Reporting Issues
 
-Found a bug or have a feature request? [Open an issue](https://github.com/R44VC0RP/openpad/issues) with:
+Found a bug or have a feature request? [Open an issue](https://github.com/R44VC0RP/opendroid/issues) with:
 
 - Clear description of the problem or feature
 - Steps to reproduce (for bugs)
 - Expected vs actual behavior
 - Screenshots if applicable
-- Device/OS information
+- Device/OS information (especially Android version)
+
+## Building for Android
+
+### Development Build
+
+```bash
+# Build APK for development
+eas build --profile development --platform android
+
+# Or build locally
+npx expo run:android
+```
+
+### Production Build
+
+```bash
+# Build AAB for Google Play Store
+eas build --profile production --platform android
+```
+
+### Running on Android Device
+
+1. Enable USB debugging on your Android device
+2. Connect your device via USB
+3. Run: `npm run android`
+
+Alternatively, use the Expo Go app:
+1. Install Expo Go from Google Play Store
+2. Run: `npm start`
+3. Scan the QR code with Expo Go
+
+## Platform-Specific Notes
+
+### Android
+- Uses BlurView for glass morphism effects (iOS uses GlassView on iOS 26+)
+- Edge-to-edge display enabled for modern Android devices
+- Optimized keyboard handling for Android
+
+### iOS
+- Supports iPad and iPhone
+- Uses Liquid Glass effects on iOS 26+
+- Fallback to BlurView on older iOS versions
 
 ## License
 
