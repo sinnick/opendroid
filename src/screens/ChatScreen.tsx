@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,20 +10,19 @@ import {
   Image,
   Dimensions,
   TextInput,
-  Platform,
   ActivityIndicator,
-  Keyboard,
-  Animated,
 } from 'react-native';
-import type { KeyboardEvent } from 'react-native';
+import { KeyboardStickyView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GlassView } from 'expo-glass-effect';
+import { GlassContainer } from '../components/GlassContainer';
+import { ModeIndicator, ChatMode } from '../components/ModeIndicator';
+import { CommandPalette } from '../components/CommandPalette';
 import { useTheme } from '../hooks/useTheme';
 import { Markdown } from '../components/Markdown';
 import { Icon, IconName } from '../components/Icon';
 import { spacing, typography } from '../theme';
-import type { Session, MessageWithParts, MessagePart } from '../providers/OpenCodeProvider';
+import type { Session, MessageWithParts, MessagePart, Command } from '../providers/OpenCodeProvider';
 
 interface ChatScreenProps {
   session: Session;
@@ -32,6 +31,10 @@ interface ChatScreenProps {
   serverUrl: string;
   onBack: () => void;
   onSendMessage: (text: string) => Promise<boolean>;
+  onModeChange?: (mode: ChatMode) => void;
+  onSendCommand?: (command: Command, args?: string) => Promise<boolean>;
+  commands?: Command[];
+  commandsLoading?: boolean;
   isSending: boolean;
 }
 
@@ -467,49 +470,64 @@ export function ChatScreen({
   serverUrl,
   onBack,
   onSendMessage,
+  onModeChange,
+  onSendCommand,
+  commands = [],
+  commandsLoading,
   isSending,
 }: ChatScreenProps) {
   const { theme, colors: c, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [inputText, setInputText] = useState('');
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
-  
-  // Animated value for keyboard height - smooth transitions
-  const keyboardHeightAnim = useRef(new Animated.Value(0)).current;
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-  // Track keyboard height for input positioning with smooth animation
-  useEffect(() => {
-    const showSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (event: KeyboardEvent) => {
-        setKeyboardVisible(true);
-        Animated.timing(keyboardHeightAnim, {
-          toValue: event.endCoordinates.height,
-          duration: event.duration || 250,
-          useNativeDriver: false, // Can't use native driver for layout properties
-        }).start();
-      }
-    );
-    const hideSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      (event: KeyboardEvent) => {
-        setKeyboardVisible(false);
-        Animated.timing(keyboardHeightAnim, {
-          toValue: 0,
-          duration: event.duration || 250,
-          useNativeDriver: false,
-        }).start();
-      }
-    );
+  // Local mode state - tracks current mode
+  const [currentMode, setCurrentMode] = useState<ChatMode>('code');
 
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, [keyboardHeightAnim]);
+  // Handle mode change - update local state and send slash command
+  const handleModeChange = useCallback((mode: ChatMode) => {
+    setCurrentMode(mode);
+    if (onModeChange) {
+      onModeChange(mode);
+    } else {
+      // Send as slash command
+      const command = mode === 'plan' ? '/plan' : '/code';
+      onSendMessage(command);
+    }
+  }, [onModeChange, onSendMessage]);
+
+  // Handle input text change - detect "/" for command palette
+  const handleInputChange = useCallback((text: string) => {
+    setInputText(text);
+
+    // Show command palette when "/" is typed at start
+    if (text.startsWith('/')) {
+      setShowCommandPalette(true);
+    } else {
+      setShowCommandPalette(false);
+    }
+  }, []);
+
+  // Handle command selection from palette
+  const handleCommandSelect = useCallback((command: Command) => {
+    setShowCommandPalette(false);
+    setInputText('');
+
+    if (onSendCommand) {
+      onSendCommand(command);
+    } else {
+      // Fallback: send as message
+      onSendMessage(`/${command.name}`);
+    }
+  }, [onSendCommand, onSendMessage]);
+
+  // Close command palette
+  const closeCommandPalette = useCallback(() => {
+    setShowCommandPalette(false);
+  }, []);
 
   // Just safe area padding - no tabs on chat screen
   const topPadding = insets.top + spacing.sm;
@@ -550,34 +568,21 @@ export function ChatScreen({
 
   // Height of floating header for content padding
   const headerHeight = topPadding + 50;
-  
-  // Base height of input area (without keyboard)
-  const baseInputHeight = 44 + spacing.sm + spacing.md;
-  
-  // For FlatList padding - use state-based value (updates less smoothly but ok for content)
-  const inputAreaHeight = baseInputHeight + (keyboardVisible ? 300 : insets.bottom); // Approximate for content padding
-  
-  // Animated bottom offset for input container - smooth keyboard animation
-  const inputBottomOffset = keyboardHeightAnim;
-  
-  // Animated padding bottom for input container
-  const inputPaddingBottom = keyboardHeightAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [insets.bottom + spacing.sm, spacing.sm],
-    extrapolate: 'clamp',
-  });
-  
-  // For scroll button positioning - use animated value (with more spacing above input)
-  const scrollButtonBottom = Animated.add(
-    keyboardHeightAnim,
-    baseInputHeight + spacing.xl
-  );
+
+  // Input area height for FlatList padding (just input height, no extra inset)
+  const inputAreaHeight = 110;
 
   return (
     <View style={theme.container}>
-      <View style={styles.keyboardAvoidingView}>
+      {/* Messages area - shrinks when keyboard opens */}
+      <KeyboardAvoidingView
+        style={styles.flatListContainer}
+        behavior="padding"
+        keyboardVerticalOffset={-inputAreaHeight+insets.bottom+5}
+      >
         <FlatList
           ref={flatListRef}
+          style={styles.flatList}
           data={invertedMessages}
           inverted
           keyExtractor={(item, index) => item.info.id || String(index)}
@@ -585,12 +590,14 @@ export function ChatScreen({
             <MessageBlock message={item} colors={c} serverUrl={serverUrl} />
           )}
           keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="interactive"
           onScroll={handleScroll}
           scrollEventThrottle={16}
           contentContainerStyle={[
             styles.listContent,
-            { paddingTop: headerHeight, paddingBottom: inputAreaHeight },
+            {
+              paddingBottom: headerHeight,
+              paddingTop: inputAreaHeight, // Space for input at visual bottom (inverted)
+            },
             invertedMessages.length === 0 && styles.emptyList
           ]}
           ListEmptyComponent={
@@ -600,74 +607,70 @@ export function ChatScreen({
                 {loading ? 'Loading...' : 'No Messages'}
               </Text>
               <Text style={[theme.body, theme.textSecondary, styles.emptyText]}>
-                {loading 
-                  ? 'Fetching messages' 
+                {loading
+                  ? 'Fetching messages'
                   : 'This session has no messages yet'}
               </Text>
             </View>
           }
         />
+      </KeyboardAvoidingView>
 
-        {/* Top gradient fade - messages fade out under header */}
-        <LinearGradient
-          colors={[c.bg, 'transparent']}
-          locations={[0.5, 1]}
-          style={[styles.topGradient, { height: headerHeight }]}
-          pointerEvents="none"
-        />
-
-        {/* Floating Liquid Glass Header - overlays content */}
-        <View style={[styles.floatingHeader, { paddingTop: topPadding }]}>
-          <TouchableOpacity 
-            onPress={onBack} 
-            activeOpacity={0.8}
-          >
-            <GlassView style={styles.glassBackButton}>
-              <Icon name="chevron-left" size={20} color={c.text} />
-              <Text style={[styles.backText, { color: c.text }]}>Back</Text>
-            </GlassView>
-          </TouchableOpacity>
-          
-          <GlassView style={styles.glassTitlePill}>
-            <Text style={[styles.headerTitle, { color: c.text }]} numberOfLines={1}>
-              {session.title || 'Chat'}
-            </Text>
-          </GlassView>
-          
-          <View style={styles.headerRight} />
-        </View>
-
-        {/* Scroll to bottom button - Liquid Glass */}
-        {showScrollButton && (
-          <Animated.View style={[styles.scrollButtonContainer, { bottom: scrollButtonBottom }]}>
-            <TouchableOpacity
-              onPress={scrollToBottom}
-              activeOpacity={0.8}
-            >
-              <GlassView style={styles.glassScrollButton}>
-                <Icon name="chevrons-down" size={24} color={c.text} />
-                <Text style={[styles.scrollButtonText, { color: c.text }]}>Latest</Text>
-              </GlassView>
-            </TouchableOpacity>
-          </Animated.View>
+      {/* Input area - positioned at bottom, sticks to keyboard */}
+      <KeyboardStickyView
+        style={styles.stickyInputContainer}
+        offset={{
+          closed: -insets.bottom, // Move up above nav bar when keyboard closed
+          opened: 0, // No extra offset when keyboard open (keyboard replaces nav bar)
+        }}
+        pointerEvents="box-none"
+      >
+        {/* Command Palette - above input */}
+        {showCommandPalette && (
+          <View style={styles.commandPaletteWrapper}>
+            <CommandPalette
+              visible={showCommandPalette}
+              commands={commands}
+              loading={commandsLoading}
+              filter={inputText}
+              onSelect={handleCommandSelect}
+              onClose={closeCommandPalette}
+            />
+          </View>
         )}
 
-        {/* iOS 26 Liquid Glass Message Input - Floating overlay */}
-        <Animated.View style={[
-          styles.inputContainer, 
-          { 
-            bottom: inputBottomOffset,
-            paddingBottom: keyboardVisible ? spacing.sm : insets.bottom + spacing.sm 
-          }
+        {/* Message Input */}
+        <View style={[
+          styles.inputContainer,
+          { backgroundColor: c.bg }
         ]}>
-          <GlassView style={styles.glassInputBar}>
+          <GlassContainer style={styles.glassInputBar}>
+            {/* Slash command button */}
+            <TouchableOpacity
+              onPress={() => {
+                if (showCommandPalette) {
+                  setShowCommandPalette(false);
+                  setInputText('');
+                } else {
+                  setInputText('/');
+                  setShowCommandPalette(true);
+                }
+              }}
+              activeOpacity={0.7}
+              style={[
+                styles.slashButton,
+                showCommandPalette && { backgroundColor: c.accent + '20' }
+              ]}
+            >
+              <Text style={[styles.slashButtonText, { color: showCommandPalette || inputText.startsWith('/') ? c.accent : c.textMuted }]}>/</Text>
+            </TouchableOpacity>
             <TextInput
               ref={inputRef}
               style={[styles.glassTextInput, { color: c.text }]}
-              placeholder="Message..."
+              placeholder="Message or /command..."
               placeholderTextColor={c.textMuted}
               value={inputText}
-              onChangeText={setInputText}
+              onChangeText={handleInputChange}
               multiline
               maxLength={10000}
               editable={!isSending}
@@ -686,22 +689,73 @@ export function ChatScreen({
               {isSending ? (
                 <ActivityIndicator size="small" color={c.text} />
               ) : (
-                <Icon 
-                  name="arrow-up" 
-                  size={20} 
-                  color={inputText.trim() ? '#fff' : c.textMuted} 
+                <Icon
+                  name="arrow-up"
+                  size={20}
+                  color={inputText.trim() ? '#fff' : c.textMuted}
                 />
               )}
             </TouchableOpacity>
-          </GlassView>
-        </Animated.View>
+          </GlassContainer>
+        </View>
+      </KeyboardStickyView>
+
+      {/* Top gradient fade - messages fade out under header */}
+      <LinearGradient
+        colors={[c.bg, 'transparent']}
+        locations={[0.5, 1]}
+        style={[styles.topGradient, { height: headerHeight }]}
+        pointerEvents="none"
+      />
+
+      {/* Floating Liquid Glass Header - overlays content */}
+      <View style={[styles.floatingHeader, { paddingTop: topPadding }]}>
+        <TouchableOpacity
+          onPress={onBack}
+          activeOpacity={0.8}
+        >
+          <GlassContainer style={styles.glassBackButton}>
+            <Icon name="chevron-left" size={20} color={c.text} />
+            <Text style={[styles.backText, { color: c.text }]}>Back</Text>
+          </GlassContainer>
+        </TouchableOpacity>
+
+        <GlassContainer style={styles.glassTitlePill}>
+          <Text style={[styles.headerTitle, { color: c.text }]} numberOfLines={1}>
+            {session.title || 'Chat'}
+          </Text>
+        </GlassContainer>
+
+        <ModeIndicator
+          mode={currentMode}
+          onModeChange={handleModeChange}
+          disabled={isSending}
+        />
       </View>
+
+      {/* Scroll to bottom button */}
+      {showScrollButton && (
+        <View style={styles.scrollButtonContainer}>
+          <TouchableOpacity
+            onPress={scrollToBottom}
+            activeOpacity={0.8}
+          >
+            <GlassContainer style={styles.glassScrollButton}>
+              <Icon name="chevrons-down" size={24} color={c.text} />
+              <Text style={[styles.scrollButtonText, { color: c.text }]}>Latest</Text>
+            </GlassContainer>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  keyboardAvoidingView: {
+  flatListContainer: {
+    flex: 1,
+  },
+  flatList: {
     flex: 1,
   },
   // Top gradient fade for smooth transition under header
@@ -747,9 +801,6 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     ...typography.bodyMedium,
-  },
-  headerRight: {
-    width: 70,
   },
   glassScrollButton: {
     flexDirection: 'row',
@@ -905,31 +956,53 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   
-  // Scroll to bottom button
+  // Scroll to bottom button - positioned above input
   scrollButtonContainer: {
     position: 'absolute',
     right: spacing.lg,
+    bottom: 100, // Above the input area
     zIndex: 101,
   },
-  
-  // iOS 26 Liquid Glass Input Area - Floating overlay
-  inputContainer: {
+
+  // Sticky container for input area - positioned at bottom
+  stickyInputContainer: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
+  },
+
+  // Command Palette wrapper - above input
+  commandPaletteWrapper: {
+    // Just a wrapper, no special positioning
+  },
+
+  // Input Area
+  inputContainer: {
     paddingHorizontal: spacing.md,
-    zIndex: 100,
+    paddingTop: spacing.xs,
+    paddingBottom: spacing.xs,
   },
   glassInputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: spacing.md,
+    paddingLeft: spacing.xs,
     paddingRight: spacing.xs,
     paddingVertical: spacing.xs,
     borderRadius: 22,
     minHeight: 44,
-    gap: spacing.sm,
+    gap: spacing.xs,
+  },
+  slashButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slashButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
   },
   glassTextInput: {
     flex: 1,
