@@ -12,13 +12,11 @@ import {
   TextInput,
   Platform,
   ActivityIndicator,
-  Keyboard,
-  Animated,
+  KeyboardAvoidingView,
 } from 'react-native';
-import type { KeyboardEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { GlassView } from 'expo-glass-effect';
+import { GlassContainer } from '../components/GlassContainer';
 import { useTheme } from '../hooks/useTheme';
 import { Markdown } from '../components/Markdown';
 import { Icon, IconName } from '../components/Icon';
@@ -475,41 +473,6 @@ export function ChatScreen({
   const [inputText, setInputText] = useState('');
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
-  
-  // Animated value for keyboard height - smooth transitions
-  const keyboardHeightAnim = useRef(new Animated.Value(0)).current;
-  const [keyboardVisible, setKeyboardVisible] = useState(false);
-
-  // Track keyboard height for input positioning with smooth animation
-  useEffect(() => {
-    const showSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow',
-      (event: KeyboardEvent) => {
-        setKeyboardVisible(true);
-        Animated.timing(keyboardHeightAnim, {
-          toValue: event.endCoordinates.height,
-          duration: event.duration || 250,
-          useNativeDriver: false, // Can't use native driver for layout properties
-        }).start();
-      }
-    );
-    const hideSubscription = Keyboard.addListener(
-      Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide',
-      (event: KeyboardEvent) => {
-        setKeyboardVisible(false);
-        Animated.timing(keyboardHeightAnim, {
-          toValue: 0,
-          duration: event.duration || 250,
-          useNativeDriver: false,
-        }).start();
-      }
-    );
-
-    return () => {
-      showSubscription.remove();
-      hideSubscription.remove();
-    };
-  }, [keyboardHeightAnim]);
 
   // Just safe area padding - no tabs on chat screen
   const topPadding = insets.top + spacing.sm;
@@ -550,34 +513,19 @@ export function ChatScreen({
 
   // Height of floating header for content padding
   const headerHeight = topPadding + 50;
-  
+
   // Base height of input area (without keyboard)
-  const baseInputHeight = 44 + spacing.sm + spacing.md;
-  
-  // For FlatList padding - use state-based value (updates less smoothly but ok for content)
-  const inputAreaHeight = baseInputHeight + (keyboardVisible ? 300 : insets.bottom); // Approximate for content padding
-  
-  // Animated bottom offset for input container - smooth keyboard animation
-  const inputBottomOffset = keyboardHeightAnim;
-  
-  // Animated padding bottom for input container
-  const inputPaddingBottom = keyboardHeightAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [insets.bottom + spacing.sm, spacing.sm],
-    extrapolate: 'clamp',
-  });
-  
-  // For scroll button positioning - use animated value (with more spacing above input)
-  const scrollButtonBottom = Animated.add(
-    keyboardHeightAnim,
-    baseInputHeight + spacing.xl
-  );
+  const inputAreaHeight = 44 + spacing.sm + spacing.md + insets.bottom;
 
   return (
     <View style={theme.container}>
-      <View style={styles.keyboardAvoidingView}>
+      <KeyboardAvoidingView
+        style={styles.keyboardAvoidingView}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      >
         <FlatList
           ref={flatListRef}
+          style={styles.flatList}
           data={invertedMessages}
           inverted
           keyExtractor={(item, index) => item.info.id || String(index)}
@@ -590,7 +538,7 @@ export function ChatScreen({
           scrollEventThrottle={16}
           contentContainerStyle={[
             styles.listContent,
-            { paddingTop: headerHeight, paddingBottom: inputAreaHeight },
+            { paddingTop: headerHeight },
             invertedMessages.length === 0 && styles.emptyList
           ]}
           ListEmptyComponent={
@@ -622,49 +570,51 @@ export function ChatScreen({
             onPress={onBack} 
             activeOpacity={0.8}
           >
-            <GlassView style={styles.glassBackButton}>
+            <GlassContainer style={styles.glassBackButton}>
               <Icon name="chevron-left" size={20} color={c.text} />
               <Text style={[styles.backText, { color: c.text }]}>Back</Text>
-            </GlassView>
+            </GlassContainer>
           </TouchableOpacity>
           
-          <GlassView style={styles.glassTitlePill}>
+          <GlassContainer style={styles.glassTitlePill}>
             <Text style={[styles.headerTitle, { color: c.text }]} numberOfLines={1}>
               {session.title || 'Chat'}
             </Text>
-          </GlassView>
+          </GlassContainer>
           
           <View style={styles.headerRight} />
         </View>
 
-        {/* Scroll to bottom button - Liquid Glass */}
+        {/* Scroll to bottom button */}
         {showScrollButton && (
-          <Animated.View style={[styles.scrollButtonContainer, { bottom: scrollButtonBottom }]}>
+          <View style={[styles.scrollButtonContainer, { bottom: inputAreaHeight + spacing.md }]}>
             <TouchableOpacity
               onPress={scrollToBottom}
               activeOpacity={0.8}
             >
-              <GlassView style={styles.glassScrollButton}>
+              <GlassContainer style={styles.glassScrollButton}>
                 <Icon name="chevrons-down" size={24} color={c.text} />
                 <Text style={[styles.scrollButtonText, { color: c.text }]}>Latest</Text>
-              </GlassView>
+              </GlassContainer>
             </TouchableOpacity>
-          </Animated.View>
+          </View>
         )}
 
-        {/* iOS 26 Liquid Glass Message Input - Floating overlay */}
-        <Animated.View style={[
-          styles.inputContainer, 
-          { 
-            bottom: inputBottomOffset,
-            paddingBottom: keyboardVisible ? spacing.sm : insets.bottom + spacing.sm 
-          }
-        ]}>
-          <GlassView style={styles.glassInputBar}>
+        {/* Message Input */}
+        <View style={[styles.inputContainer, { paddingBottom: Math.max(insets.bottom, spacing.sm) }]}>
+          <GlassContainer style={styles.glassInputBar}>
+            {/* Slash command button */}
+            <TouchableOpacity
+              onPress={() => setInputText(inputText.startsWith('/') ? inputText : '/' + inputText)}
+              activeOpacity={0.7}
+              style={styles.slashButton}
+            >
+              <Text style={[styles.slashButtonText, { color: inputText.startsWith('/') ? c.accent : c.textMuted }]}>/</Text>
+            </TouchableOpacity>
             <TextInput
               ref={inputRef}
               style={[styles.glassTextInput, { color: c.text }]}
-              placeholder="Message..."
+              placeholder="Message or /command..."
               placeholderTextColor={c.textMuted}
               value={inputText}
               onChangeText={setInputText}
@@ -686,22 +636,25 @@ export function ChatScreen({
               {isSending ? (
                 <ActivityIndicator size="small" color={c.text} />
               ) : (
-                <Icon 
-                  name="arrow-up" 
-                  size={20} 
-                  color={inputText.trim() ? '#fff' : c.textMuted} 
+                <Icon
+                  name="arrow-up"
+                  size={20}
+                  color={inputText.trim() ? '#fff' : c.textMuted}
                 />
               )}
             </TouchableOpacity>
-          </GlassView>
-        </Animated.View>
-      </View>
+          </GlassContainer>
+        </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   keyboardAvoidingView: {
+    flex: 1,
+  },
+  flatList: {
     flex: 1,
   },
   // Top gradient fade for smooth transition under header
@@ -912,24 +865,31 @@ const styles = StyleSheet.create({
     zIndex: 101,
   },
   
-  // iOS 26 Liquid Glass Input Area - Floating overlay
+  // Input Area - flows in KeyboardAvoidingView
   inputContainer: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
     paddingHorizontal: spacing.md,
-    zIndex: 100,
+    paddingTop: spacing.xs,
   },
   glassInputBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: spacing.md,
+    paddingLeft: spacing.xs,
     paddingRight: spacing.xs,
     paddingVertical: spacing.xs,
     borderRadius: 22,
     minHeight: 44,
-    gap: spacing.sm,
+    gap: spacing.xs,
+  },
+  slashButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  slashButtonText: {
+    fontSize: 20,
+    fontWeight: '600',
   },
   glassTextInput: {
     flex: 1,

@@ -119,7 +119,7 @@ interface OpenCodeProviderProps {
   defaultServerUrl?: string;
 }
 
-export function OpenCodeProvider({ children, defaultServerUrl = 'http://10.0.10.59:9034' }: OpenCodeProviderProps) {
+export function OpenCodeProvider({ children, defaultServerUrl = 'http://192.168.100.48:9034' }: OpenCodeProviderProps) {
   // Connection state
   const [connected, setConnected] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -176,20 +176,27 @@ export function OpenCodeProvider({ children, defaultServerUrl = 'http://10.0.10.
     return '';
   };
   
-  // Connect to server
+  // Connect to server with timeout
   const connect = useCallback(async (url?: string) => {
     const targetUrl = url || serverUrl;
     setConnecting(true);
     setError(null);
-    
+
     try {
       const client = createOpencodeClient({
         baseUrl: targetUrl,
       });
-      
-      // Test connection
-      await client.session.list();
-      
+
+      // Test connection with 5 second timeout
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('Connection timeout')), 5000)
+      );
+
+      await Promise.race([
+        client.session.list(),
+        timeoutPromise
+      ]);
+
       clientRef.current = client;
       setServerUrl(targetUrl);
       setConnected(true);
