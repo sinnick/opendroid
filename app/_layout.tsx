@@ -3,6 +3,7 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useColorScheme } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import * as SplashScreen from 'expo-splash-screen';
 import { OpenCodeProvider, useOpenCode } from '../src/providers/OpenCodeProvider';
 
@@ -59,23 +60,25 @@ export default function RootLayout() {
 
   return (
     <SafeAreaProvider>
-      <OpenCodeProvider>
-        <StatusBar style={isDark ? 'light' : 'dark'} />
-        <AuthRedirect>
-          <Stack screenOptions={{ headerShown: false }}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen 
-              name="chat/[id]" 
-              options={{
-                presentation: 'card',
-                animation: 'slide_from_right',
-              }}
-            />
-            <Stack.Screen name="connect" />
-            <Stack.Screen name="index" />
-          </Stack>
-        </AuthRedirect>
-      </OpenCodeProvider>
+      <KeyboardProvider>
+        <OpenCodeProvider>
+          <StatusBar style={isDark ? 'light' : 'dark'} />
+          <AuthRedirect>
+            <Stack screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="(tabs)" />
+              <Stack.Screen
+                name="chat/[id]"
+                options={{
+                  presentation: 'card',
+                  animation: 'slide_from_right',
+                }}
+              />
+              <Stack.Screen name="connect" />
+              <Stack.Screen name="index" />
+            </Stack>
+          </AuthRedirect>
+        </OpenCodeProvider>
+      </KeyboardProvider>
     </SafeAreaProvider>
   );
 }

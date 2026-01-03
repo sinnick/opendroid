@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,9 @@ import {
   Image,
   Dimensions,
   TextInput,
-  Platform,
   ActivityIndicator,
-  Keyboard,
-  KeyboardEvent,
 } from 'react-native';
+import { KeyboardStickyView, KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassContainer } from '../components/GlassContainer';
@@ -489,23 +487,6 @@ export function ChatScreen({
   // Local mode state - tracks current mode
   const [currentMode, setCurrentMode] = useState<ChatMode>('code');
 
-  // Track keyboard height for edge-to-edge Android
-  const [keyboardHeight, setKeyboardHeight] = useState(0);
-
-  useEffect(() => {
-    const showSub = Keyboard.addListener('keyboardDidShow', (e: KeyboardEvent) => {
-      setKeyboardHeight(e.endCoordinates.height);
-    });
-    const hideSub = Keyboard.addListener('keyboardDidHide', () => {
-      setKeyboardHeight(0);
-    });
-
-    return () => {
-      showSub.remove();
-      hideSub.remove();
-    };
-  }, []);
-
   // Handle mode change - update local state and send slash command
   const handleModeChange = useCallback((mode: ChatMode) => {
     setCurrentMode(mode);
@@ -588,50 +569,136 @@ export function ChatScreen({
   // Height of floating header for content padding
   const headerHeight = topPadding + 50;
 
-  // Calculate input area bottom position and content padding
-  // With edge-to-edge, we manually position based on keyboard height
-  const inputBottomInset = keyboardHeight > 0 ? keyboardHeight : insets.bottom;
-  const inputAreaTotalHeight = 60 + inputBottomInset;
+  // Input area height for FlatList padding (just input height, no extra inset)
+  const inputAreaHeight = 110;
 
   return (
     <View style={theme.container}>
-      {/* Messages list - full screen, content padded for header and input */}
-      <FlatList
-        ref={flatListRef}
-        style={styles.flatList}
-        data={invertedMessages}
-        inverted
-        keyExtractor={(item, index) => item.info.id || String(index)}
-        renderItem={({ item }) => (
-          <MessageBlock message={item} colors={c} serverUrl={serverUrl} />
-        )}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="interactive"
-        onScroll={handleScroll}
-        scrollEventThrottle={16}
-        contentContainerStyle={[
-          styles.listContent,
-          {
-            // For inverted list: paddingTop = visual bottom, paddingBottom = visual top
-            paddingTop: inputAreaTotalHeight,
-            paddingBottom: headerHeight,
-          },
-          invertedMessages.length === 0 && styles.emptyList
-        ]}
-        ListEmptyComponent={
-          <View style={[styles.emptyState, styles.emptyStateInverted]}>
-            <Icon name="message-square" size={48} color={c.textMuted} />
-            <Text style={[theme.subtitle, { marginTop: spacing.lg, color: c.text }]}>
-              {loading ? 'Loading...' : 'No Messages'}
-            </Text>
-            <Text style={[theme.body, theme.textSecondary, styles.emptyText]}>
-              {loading
-                ? 'Fetching messages'
-                : 'This session has no messages yet'}
-            </Text>
+      {/* Messages area - shrinks when keyboard opens */}
+      <KeyboardAvoidingView
+        style={styles.flatListContainer}
+        behavior="padding"
+        keyboardVerticalOffset={-inputAreaHeight+insets.bottom+5}
+      >
+        <FlatList
+          ref={flatListRef}
+          style={styles.flatList}
+          data={invertedMessages}
+          inverted
+          keyExtractor={(item, index) => item.info.id || String(index)}
+          renderItem={({ item }) => (
+            <MessageBlock message={item} colors={c} serverUrl={serverUrl} />
+          )}
+          keyboardShouldPersistTaps="handled"
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          contentContainerStyle={[
+            styles.listContent,
+            {
+              paddingBottom: headerHeight,
+              paddingTop: inputAreaHeight, // Space for input at visual bottom (inverted)
+            },
+            invertedMessages.length === 0 && styles.emptyList
+          ]}
+          ListEmptyComponent={
+            <View style={[styles.emptyState, styles.emptyStateInverted]}>
+              <Icon name="message-square" size={48} color={c.textMuted} />
+              <Text style={[theme.subtitle, { marginTop: spacing.lg, color: c.text }]}>
+                {loading ? 'Loading...' : 'No Messages'}
+              </Text>
+              <Text style={[theme.body, theme.textSecondary, styles.emptyText]}>
+                {loading
+                  ? 'Fetching messages'
+                  : 'This session has no messages yet'}
+              </Text>
+            </View>
+          }
+        />
+      </KeyboardAvoidingView>
+
+      {/* Input area - positioned at bottom, sticks to keyboard */}
+      <KeyboardStickyView
+        style={styles.stickyInputContainer}
+        offset={{
+          closed: -insets.bottom, // Move up above nav bar when keyboard closed
+          opened: 0, // No extra offset when keyboard open (keyboard replaces nav bar)
+        }}
+        pointerEvents="box-none"
+      >
+        {/* Command Palette - above input */}
+        {showCommandPalette && (
+          <View style={styles.commandPaletteWrapper}>
+            <CommandPalette
+              visible={showCommandPalette}
+              commands={commands}
+              loading={commandsLoading}
+              filter={inputText}
+              onSelect={handleCommandSelect}
+              onClose={closeCommandPalette}
+            />
           </View>
-        }
-      />
+        )}
+
+        {/* Message Input */}
+        <View style={[
+          styles.inputContainer,
+          { backgroundColor: c.bg }
+        ]}>
+          <GlassContainer style={styles.glassInputBar}>
+            {/* Slash command button */}
+            <TouchableOpacity
+              onPress={() => {
+                if (showCommandPalette) {
+                  setShowCommandPalette(false);
+                  setInputText('');
+                } else {
+                  setInputText('/');
+                  setShowCommandPalette(true);
+                }
+              }}
+              activeOpacity={0.7}
+              style={[
+                styles.slashButton,
+                showCommandPalette && { backgroundColor: c.accent + '20' }
+              ]}
+            >
+              <Text style={[styles.slashButtonText, { color: showCommandPalette || inputText.startsWith('/') ? c.accent : c.textMuted }]}>/</Text>
+            </TouchableOpacity>
+            <TextInput
+              ref={inputRef}
+              style={[styles.glassTextInput, { color: c.text }]}
+              placeholder="Message or /command..."
+              placeholderTextColor={c.textMuted}
+              value={inputText}
+              onChangeText={handleInputChange}
+              multiline
+              maxLength={10000}
+              editable={!isSending}
+              onSubmitEditing={handleSend}
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              onPress={handleSend}
+              disabled={!inputText.trim() || isSending}
+              activeOpacity={0.7}
+              style={[
+                styles.glassSendButton,
+                { backgroundColor: inputText.trim() && !isSending ? c.accent : 'transparent' }
+              ]}
+            >
+              {isSending ? (
+                <ActivityIndicator size="small" color={c.text} />
+              ) : (
+                <Icon
+                  name="arrow-up"
+                  size={20}
+                  color={inputText.trim() ? '#fff' : c.textMuted}
+                />
+              )}
+            </TouchableOpacity>
+          </GlassContainer>
+        </View>
+      </KeyboardStickyView>
 
       {/* Top gradient fade - messages fade out under header */}
       <LinearGradient
@@ -666,9 +733,9 @@ export function ChatScreen({
         />
       </View>
 
-      {/* Scroll to bottom button - positioned above input */}
+      {/* Scroll to bottom button */}
       {showScrollButton && (
-        <View style={[styles.scrollButtonContainer, { bottom: inputAreaTotalHeight + spacing.md }]}>
+        <View style={styles.scrollButtonContainer}>
           <TouchableOpacity
             onPress={scrollToBottom}
             activeOpacity={0.8}
@@ -680,89 +747,12 @@ export function ChatScreen({
           </TouchableOpacity>
         </View>
       )}
-
-      {/* Command Palette - positioned above input */}
-      {showCommandPalette && (
-        <View style={[styles.commandPaletteContainer, { bottom: inputAreaTotalHeight }]}>
-          <CommandPalette
-            visible={showCommandPalette}
-            commands={commands}
-            loading={commandsLoading}
-            filter={inputText}
-            onSelect={handleCommandSelect}
-            onClose={closeCommandPalette}
-          />
-        </View>
-      )}
-
-      {/* Message Input - absolute positioned at bottom, moves with keyboard */}
-      <View style={[
-        styles.inputContainer,
-        {
-          bottom: inputBottomInset,
-          backgroundColor: c.bg,
-        }
-      ]}>
-        <GlassContainer style={styles.glassInputBar}>
-          {/* Slash command button */}
-          <TouchableOpacity
-            onPress={() => {
-              if (showCommandPalette) {
-                setShowCommandPalette(false);
-                setInputText('');
-              } else {
-                setInputText('/');
-                setShowCommandPalette(true);
-              }
-            }}
-            activeOpacity={0.7}
-            style={[
-              styles.slashButton,
-              showCommandPalette && { backgroundColor: c.accent + '20' }
-            ]}
-          >
-            <Text style={[styles.slashButtonText, { color: showCommandPalette || inputText.startsWith('/') ? c.accent : c.textMuted }]}>/</Text>
-          </TouchableOpacity>
-          <TextInput
-            ref={inputRef}
-            style={[styles.glassTextInput, { color: c.text }]}
-            placeholder="Message or /command..."
-            placeholderTextColor={c.textMuted}
-            value={inputText}
-            onChangeText={handleInputChange}
-            multiline
-            maxLength={10000}
-            editable={!isSending}
-            onSubmitEditing={handleSend}
-            blurOnSubmit={false}
-          />
-          <TouchableOpacity
-            onPress={handleSend}
-            disabled={!inputText.trim() || isSending}
-            activeOpacity={0.7}
-            style={[
-              styles.glassSendButton,
-              { backgroundColor: inputText.trim() && !isSending ? c.accent : 'transparent' }
-            ]}
-          >
-            {isSending ? (
-              <ActivityIndicator size="small" color={c.text} />
-            ) : (
-              <Icon
-                name="arrow-up"
-                size={20}
-                color={inputText.trim() ? '#fff' : c.textMuted}
-              />
-            )}
-          </TouchableOpacity>
-        </GlassContainer>
-      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  flex1: {
+  flatListContainer: {
     flex: 1,
   },
   flatList: {
@@ -966,30 +956,32 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   
-  // Scroll to bottom button - bottom set dynamically
+  // Scroll to bottom button - positioned above input
   scrollButtonContainer: {
     position: 'absolute',
     right: spacing.lg,
+    bottom: 100, // Above the input area
     zIndex: 101,
   },
 
-  // Command Palette container - bottom set dynamically
-  commandPaletteContainer: {
+  // Sticky container for input area - positioned at bottom
+  stickyInputContainer: {
     position: 'absolute',
+    bottom: 0,
     left: 0,
     right: 0,
-    zIndex: 103,
   },
 
-  // Input Area - absolute positioned, bottom set dynamically
+  // Command Palette wrapper - above input
+  commandPaletteWrapper: {
+    // Just a wrapper, no special positioning
+  },
+
+  // Input Area
   inputContainer: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.xs,
-    paddingBottom: spacing.sm,
-    zIndex: 102,
+    paddingBottom: spacing.xs,
   },
   glassInputBar: {
     flexDirection: 'row',
