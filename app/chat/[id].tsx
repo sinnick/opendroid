@@ -1,6 +1,6 @@
 import { useEffect, useCallback } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ChatScreen } from '../../src/screens/ChatScreen';
+import { ChatScreen, ChatMode } from '../../src/screens/ChatScreen';
 import { useOpenCode, Session, Command } from '../../src/providers/OpenCodeProvider';
 
 export default function Chat() {
@@ -53,6 +53,12 @@ export default function Chat() {
     return sendCommand(id, command, args);
   }, [sendCommand, id]);
 
+  const handleModeChange = useCallback((mode: ChatMode) => {
+    if (!id) return;
+    const command = { name: mode };
+    sendCommand(id, command);
+  }, [sendCommand, id]);
+
   return (
     <ChatScreen
       session={session}
@@ -61,6 +67,7 @@ export default function Chat() {
       serverUrl={serverUrl}
       onBack={handleBack}
       onSendMessage={handleSendMessage}
+      onModeChange={handleModeChange}
       onSendCommand={handleSendCommand}
       commands={commands}
       commandsLoading={commandsLoading}

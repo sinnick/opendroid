@@ -17,6 +17,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { GlassContainer } from '../components/GlassContainer';
 import { ModeIndicator, ChatMode } from '../components/ModeIndicator';
+export type { ChatMode };
 import { CommandPalette } from '../components/CommandPalette';
 import { useTheme } from '../hooks/useTheme';
 import { Markdown } from '../components/Markdown';
